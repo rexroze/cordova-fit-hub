@@ -2,6 +2,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Brand } from "../../components/ui";
+import {
+  broadcastWorkspaceBoundary,
+  workspaceCache,
+} from "../../lib/client/workspace-cache";
 export default function ChangePassword() {
   const router = useRouter();
   const [currentPassword, setCurrent] = useState(""),
@@ -30,6 +34,8 @@ export default function ChangePassword() {
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Could not update password.");
+      workspaceCache.clear();
+      broadcastWorkspaceBoundary();
       router.replace(d.user.role === "member" ? "/portal" : "/dashboard");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update password.");

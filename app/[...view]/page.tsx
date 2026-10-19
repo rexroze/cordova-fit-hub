@@ -26,6 +26,14 @@ import type {
   Plan,
   SessionUser,
 } from "../../lib/contracts";
+import { useSyncExternalStore } from "react";
+import {
+  workspaceCache,
+  HttpError,
+  broadcastWorkspaceBoundary,
+  getServerWorkspaceSnapshot,
+} from "../../lib/client/workspace-cache";
+import WorkspaceSkeleton from "../../components/workspace-skeleton";
 type User = SessionUser;
 type Data = BootstrapData;
 const php = (n: number) =>
@@ -50,7 +58,7 @@ async function api(url: string, init?: RequestInit) {
     try {
       err = (await r.json()).error || err;
     } catch {}
-    throw new Error(err);
+    throw new HttpError(r.status, err);
   }
   return ct.includes("json") ? r.json() : r;
 }
@@ -71,8 +79,13 @@ export default function Workspace() {
   const params = useParams<{ view: string[] }>();
   const route = (params.view || []).join("/") || "dashboard";
   const router = useRouter();
-  const [data, setData] = useState<Data | null>(null);
-  const [loading, setLoading] = useState(true);
+  const snapshot = useSyncExternalStore(
+    workspaceCache.subscribe,
+    workspaceCache.getSnapshot,
+    getServerWorkspaceSnapshot,
+  );
+  const data = snapshot.data;
+  const loading = snapshot.refreshing;
   const [error, setError] = useState("");
   const [modal, setModal] = useState("");
   const [renewalKey, setRenewalKey] = useState("");
@@ -82,43 +95,75 @@ export default function Workspace() {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [manilaToday, setManilaToday] = useState("");
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const me = await api("/api/auth/me");
-      if (!me.user) {
-        router.replace("/login");
-        return;
+  const load = useCallback(
+    async (force = false) => {
+      try {
+        const d = await workspaceCache.load(() => api("/api/bootstrap"), force);
+        if (!d) return;
+        if (d.user.mustChangePassword) {
+          router.replace("/change-password");
+          return;
+        }
+        if (d.user.role === "member" && !route.startsWith("portal")) {
+          router.replace("/portal");
+          return;
+        }
+        if (d.user.role !== "member" && route.startsWith("portal")) {
+          router.replace("/dashboard");
+          return;
+        }
+        setManilaToday(
+          new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(
+            new Date(),
+          ),
+        );
+        setError("");
+      } catch (e) {
+        if (e instanceof HttpError && e.status === 401)
+          router.replace("/login");
+        if (e instanceof HttpError && e.status === 403) {
+          try {
+            const me = await api("/api/auth/me");
+            router.replace(
+              me.user?.mustChangePassword ? "/change-password" : "/login",
+            );
+          } catch {
+            router.replace("/login");
+          }
+        }
+        setError(e instanceof Error ? e.message : "Unable to load workspace.");
       }
-      if (me.user.mustChangePassword) {
-        router.replace("/change-password");
-        return;
-      }
-      if (me.user.role === "member" && !route.startsWith("portal")) {
-        router.replace("/portal");
-        return;
-      }
-      if (me.user.role !== "member" && route.startsWith("portal")) {
-        router.replace("/dashboard");
-        return;
-      }
-      const d = await api("/api/bootstrap");
-      setData(d);
-      setManilaToday(
-        new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" }).format(
-          new Date(),
-        ),
-      );
-      setError("");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Unable to load workspace.");
-    } finally {
-      setLoading(false);
-    }
-  }, [router, route]);
+    },
+    [router, route],
+  );
   useEffect(() => {
     load();
   }, [load]);
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [load]);
+  useEffect(() => {
+    if (snapshot.data && snapshot.error) setError(snapshot.error);
+  }, [snapshot.error, snapshot.data]);
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const channel = new BroadcastChannel("workspace-session");
+    channel.onmessage = () => {
+      workspaceCache.clear();
+      router.replace("/login");
+    };
+    return () => channel.close();
+  }, [router]);
   useEffect(() => {
     if (modal) setError("");
   }, [modal]);
@@ -136,9 +181,10 @@ export default function Workspace() {
     setError("");
     try {
       await api(url, json(method, body));
+      workspaceCache.invalidate();
       setNotice(success);
       setModal("");
-      await load();
+      await load(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Request failed");
     } finally {
@@ -146,24 +192,24 @@ export default function Workspace() {
     }
   };
   const logout = async () => {
+    workspaceCache.clear();
+    broadcastWorkspaceBoundary();
+    let failed = false;
     try {
       await api("/api/auth/logout", json("POST", {}));
+    } catch {
+      failed = true;
     } finally {
-      router.replace("/login");
+      router.replace(failed ? "/login?logout=failed" : "/login");
     }
   };
-  if (loading && !data)
-    return (
-      <div className="content">
-        <div className="card">Loading your workspace…</div>
-      </div>
-    );
+  if (!data && !error) return <WorkspaceSkeleton route={route} />;
   if (!data)
     return (
       <div className="content">
         <div className="notice" role="alert">
           {error || "Unable to load workspace."}{" "}
-          <button className="button small-button" onClick={load}>
+          <button className="button small-button" onClick={() => load(true)}>
             Try again
           </button>
         </div>
@@ -733,7 +779,8 @@ export default function Workspace() {
               json("POST", { code, method }),
             );
             setNotice(d.message || `Checked in ${d.member?.name || "member"}.`);
-            await load();
+            workspaceCache.invalidate();
+            await load(true);
           } catch (e) {
             setError(e instanceof Error ? e.message : "Check-in failed.");
           } finally {
@@ -938,9 +985,17 @@ export default function Workspace() {
             ↓ Download sample template
           </a>
           <ImportForm
-            onImport={async (csv, preview) =>
-              api("/api/import", json("POST", { csv, preview }))
-            }
+            onImport={async (csv, preview) => {
+              const result = await api(
+                "/api/import",
+                json("POST", { csv, preview }),
+              );
+              if (!preview && result.rows) {
+                workspaceCache.invalidate();
+                await load(true);
+              }
+              return result;
+            }}
           />
         </section>
       </div>
@@ -993,6 +1048,8 @@ export default function Workspace() {
                           setNotice(
                             `Temporary password for ${s.name}: ${d.temporaryPassword}`,
                           );
+                          workspaceCache.invalidate();
+                          await load(true);
                         } catch (e) {
                           setError(
                             e instanceof Error
@@ -1218,6 +1275,22 @@ export default function Workspace() {
             </button>
           </div>
         )}
+        {loading && (
+          <span
+            className="muted"
+            role="status"
+            data-testid="workspace-refresh-indicator"
+          >
+            Refreshing workspace…
+          </span>
+        )}
+        <button
+          className="button ghost small-button"
+          aria-label="Refresh workspace"
+          onClick={() => load(true)}
+        >
+          Refresh
+        </button>
         {body}
       </main>
       {modal === "register" && (
@@ -1332,7 +1405,8 @@ export default function Workspace() {
                   `Staff account created. Temporary password: ${d.temporaryPassword}`,
                 );
                 setModal("");
-                await load();
+                workspaceCache.invalidate();
+                await load(true);
               } catch (e) {
                 setError(
                   e instanceof Error

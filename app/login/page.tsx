@@ -1,8 +1,12 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Brand } from "../../components/ui";
+import {
+  broadcastWorkspaceBoundary,
+  workspaceCache,
+} from "../../lib/client/workspace-cache";
 
 export default function Login() {
   const router = useRouter();
@@ -11,8 +15,19 @@ export default function Login() {
   const [show, setShow] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (
+      new URLSearchParams(window.location.search).get("logout") === "failed"
+    ) {
+      setError(
+        "Your cached workspace was cleared, but server sign-out could not be confirmed. Reconnect and sign in again, then retry signing out before leaving a shared device.",
+      );
+    }
+  }, []);
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    workspaceCache.clear();
+    broadcastWorkspaceBoundary();
     setBusy(true);
     setError("");
     try {

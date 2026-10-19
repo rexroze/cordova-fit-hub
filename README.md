@@ -4,6 +4,8 @@ A full-stack gym management and business analytics application built with Next.j
 
 **Live app:** https://cordova-fit-hub.vercel.app · See [deployment and validation evidence](VALIDATION.md) for completed checks and known limitations.
 
+The public homepage introduces the member experience using locally hosted licensed photography; source and attribution details are in [IMAGE_CREDITS.md](IMAGE_CREDITS.md) and the public footer. Workspace views use page-shaped loading skeletons and a private, in-memory 30-second cache. See [PERFORMANCE.md](PERFORMANCE.md) for the refresh policy, account-isolation safeguards, and measured request reduction.
+
 ## Roles and workflows
 
 | Role | Access |
