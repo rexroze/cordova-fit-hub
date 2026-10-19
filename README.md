@@ -2,6 +2,8 @@
 
 A full-stack gym management and business analytics application built with Next.js, TypeScript, and Neon PostgreSQL. The initial deployment is an **academic demonstration using synthetic data**, not a live gym payment processor.
 
+**Live app:** https://cordova-fit-hub.vercel.app · See [deployment and validation evidence](VALIDATION.md) for completed checks and known limitations.
+
 ## Roles and workflows
 
 | Role | Access |
