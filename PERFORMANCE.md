@@ -39,4 +39,8 @@ HTTP responses containing authenticated data retain their private/no-store polic
 - Background refresh retained content; successful member registration updated the cached list; cross-tab logout and owner-to-member switching cleared prior account data; an expired session redirected to login; simulated network failure retained data with a warning.
 - Landing images loaded successfully at 360, 768, and 1440 pixels with no horizontal viewport overflow or private bootstrap requests. Visual review found no launch-blocking issues.
 
-The deployed build is checked separately before handoff. A skeleton alone is not evidence of reduced data-fetching cost.
+## Deployed verification
+
+All **18 browser/API tests passed against https://cordova-fit-hub.vercel.app**, with no skipped tests. In that remote run, three warm navigations issued **zero session and zero bootstrap requests**, compared with six workspace API requests for the baseline cycle. Their combined observed time was **2,638 ms**; timing varies with browser automation, route rendering, and network conditions. This is a reduction in redundant data loading, not a promise that all navigation has zero latency.
+
+The deployed checks also established first-load skeleton visibility, background refresh without blanking, immediate post-registration list freshness, account isolation, cross-tab logout, expired-session handling, and network-error warnings. A skeleton alone is not evidence of reduced data-fetching cost.

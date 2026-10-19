@@ -15,10 +15,13 @@ The first deployment was automatically assigned to Vercel Production and given t
 | Claim | Evidence |
 | --- | --- |
 | Code type-checks | `npm run typecheck` passed after integration fixes |
-| Core calculations and permissions | 5 unit tests passed: centavo arithmetic, invalid amounts, leap/non-leap month-end dates, revenue forecasting, and role/member scoping |
+| Core calculations, permissions, and cache behavior | 11 unit tests passed: five domain tests plus six cache freshness, deduplication, invalidation, error, and stale-response tests |
 | Lint has no errors | `npm run lint -- --quiet` passed; nonblocking type/style warnings remain |
 | Production build works | Local optimized build and Vercel build both passed |
-| Deployed workflows work | All **10 Playwright tests passed against https://cordova-fit-hub.vercel.app**, with no skipped tests |
+| Deployed workflows work | All **18 Playwright tests passed against https://cordova-fit-hub.vercel.app**, with no skipped tests |
+| Workspace navigation avoids redundant data requests | One cold bootstrap without a preceding session request; three warm navigations made zero bootstrap/session calls within the 30-second freshness window; see `PERFORMANCE.md` |
+| Cached data remains isolated and fresh after changes | Background refresh preserves content; member registration refreshes cached lists; logout/account switching and cross-tab logout clear prior data; session expiry clears the cache; network failures retain content with a warning |
+| Public landing page works | Locally hosted licensed photography loads at 360/768/1440px, sign-in links work, no private bootstrap is fetched, and source/license attribution is available in the public footer |
 | Responsive operation | Owner, staff, and member browser login/navigation tested at 360, 390, 768, and 1440 CSS pixels; no horizontal page overflow in these views |
 | Member QR is usable on mobile | Browser assertion verified the entire QR fits above fixed navigation after scrolling; visual review confirmed contrast and unobstructed QR margin |
 | Role boundaries hold | Owner/staff/member bootstrap scopes, forbidden member writes/exports, staff pricing restrictions, invalid-Origin rejection |
